@@ -15,9 +15,6 @@ import android.widget.TextView
 import androidx.fragment.app.Fragment
 import com.io.alquilame.databinding.FragmentGalleryBinding
 import com.io.alquilame.data.SecureCredentialsStorage
-import com.io.alquilame.BuildConfig
-import java.security.MessageDigest
-import java.time.Instant
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
@@ -33,6 +30,10 @@ import android.webkit.URLUtil
 import android.app.DownloadManager
 import android.content.Context
 import android.os.Environment
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+import com.io.alquilame.data.AuthRepository
+import com.io.alquilame.data.Result
 
 class WebviewFragment : Fragment() {
 
@@ -43,7 +44,8 @@ class WebviewFragment : Fragment() {
     private lateinit var progressBar: ProgressBar
     private lateinit var errorTextView: TextView
     private lateinit var credentialsStorage: SecureCredentialsStorage
-    
+    private lateinit var authRepository: AuthRepository
+
     private var webAppUrl: String? = null
     private var fileUploadCallback: ValueCallback<Array<Uri>>? = null
     
@@ -65,11 +67,20 @@ class WebviewFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        
+
         initViews()
         initCredentialsStorage()
         setupWebView()
-        loadWebApp()
+
+        // Check if auth URL was passed from QR code scan
+        val authUrl = activity?.intent?.getStringExtra("AUTH_URL")
+        if (authUrl != null) {
+            // QR code authentication - load URL directly
+            loadAuthUrl(authUrl)
+        } else {
+            // Normal authentication - fetch nonce
+            loadWebApp()
+        }
     }
     
     private fun initViews() {
@@ -80,36 +91,10 @@ class WebviewFragment : Fragment() {
     
     private fun initCredentialsStorage() {
         credentialsStorage = SecureCredentialsStorage(requireContext())
-        
-        val username = credentialsStorage.getUsername()
-        val apiKey = credentialsStorage.getApiKey()
-        
-        if (username != null && apiKey != null) {
-            // Generate secure URL with dynamic path
-            webAppUrl = generateSecureUrl(username, apiKey)
-        } else {
-            webAppUrl = null
-        }
-    }
-    
-    private fun generateSecureUrl(tenantSlug: String, secretSlug: String): String {
-        // Generate timestamp as random key
-        val randomKey = Instant.now().toEpochMilli().toString()
-        
-        // Generate dynamic secret: tenant_slug + secret_slug + random_key + SECRET_STRING_LOGIN
-        val combinedSecret = "$tenantSlug|$secretSlug|$randomKey|${BuildConfig.SECRET_STRING_LOGIN}"
-        val hashedSecret = generateSHA256Hash(combinedSecret)
-        
-        // Use first 16 characters for URL friendliness
-        val secretTenantSlugDynamic = hashedSecret.substring(0, 16)
-        
-        // Build secure URL: /s/tenant/:tenant_slug/:secret_tenant_slug_dynamic/:random_key
-        return "https://$tenantSlug.alquilame.io/s/tenant/$tenantSlug/$secretTenantSlugDynamic/$randomKey"
-    }
-    
-    private fun generateSHA256Hash(input: String): String {
-        val bytes = MessageDigest.getInstance("SHA-256").digest(input.toByteArray())
-        return bytes.joinToString("") { "%02x".format(it) }
+        authRepository = AuthRepository(requireContext())
+
+        // Don't generate URL here - we'll do it asynchronously in loadWebApp()
+        webAppUrl = null
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -221,16 +206,60 @@ class WebviewFragment : Fragment() {
         }
     }
     
-    private fun loadWebApp() {
+    /**
+     * Load auth URL directly (used for QR code authentication)
+     */
+    private fun loadAuthUrl(authUrl: String) {
         try {
-            if (webAppUrl != null) {
-                showLoading()
-                webView.loadUrl(webAppUrl!!)
-            } else {
-                showError("No API key found. Please log in again.")
-            }
+            showLoading()
+            webAppUrl = authUrl
+            webView.loadUrl(authUrl)
+            Toast.makeText(
+                requireContext(),
+                "Loading from QR code authentication...",
+                Toast.LENGTH_SHORT
+            ).show()
         } catch (e: Exception) {
-            showError("Error loading web app: ${e.message}")
+            showError("Error loading auth URL: ${e.message}")
+        }
+    }
+
+    /**
+     * Load web app with nonce-based authentication
+     */
+    private fun loadWebApp() {
+        // Check if we have credentials
+        if (!credentialsStorage.hasCredentials()) {
+            showError("No API key found. Please log in again.")
+            return
+        }
+
+        // Show loading while we fetch the auth URL
+        showLoading()
+
+        // Use coroutine to fetch auth URL asynchronously
+        lifecycleScope.launch {
+            try {
+                when (val result = authRepository.getAuthUrl()) {
+                    is Result.Success -> {
+                        // Successfully got auth URL, load it in webview
+                        webAppUrl = result.data
+                        webView.loadUrl(webAppUrl!!)
+                    }
+                    is Result.Error -> {
+                        // Failed to get auth URL, show error
+                        val errorMessage = result.exception.message ?: "Failed to get authentication URL"
+                        showError(errorMessage)
+                        Toast.makeText(
+                            requireContext(),
+                            "Authentication error: $errorMessage",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            } catch (e: Exception) {
+                showError("Error loading web app: ${e.message}")
+            }
         }
     }
     
@@ -265,7 +294,8 @@ class WebviewFragment : Fragment() {
     
     fun reload() {
         if (::webView.isInitialized) {
-            webView.reload()
+            // Reload the web app by fetching a fresh nonce
+            loadWebApp()
         }
     }
     

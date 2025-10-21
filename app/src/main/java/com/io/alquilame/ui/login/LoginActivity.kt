@@ -153,24 +153,61 @@ class LoginActivity : AppCompatActivity() {
     
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        
+
         if (requestCode == QR_SCANNER_REQUEST_CODE && resultCode == Activity.RESULT_OK) {
             data?.let { intent ->
-                val username = intent.getStringExtra(QRScannerActivity.EXTRA_USERNAME)
-                val apiKey = intent.getStringExtra(QRScannerActivity.EXTRA_API_KEY)
-                
-                if (username != null && apiKey != null) {
-                    // Auto-fill the form fields
-                    binding.username.setText(username)
-                    binding.password.setText(apiKey)
-                    
-                    // Auto-login with QR credentials
-                    binding.loading.visibility = View.VISIBLE
-                    loginViewModel.login(username, apiKey)
-                    
-                    Toast.makeText(this, "QR Code scanned successfully!", Toast.LENGTH_SHORT).show()
+                val isNonceAuth = intent.getBooleanExtra(QRScannerActivity.EXTRA_IS_NONCE_AUTH, false)
+
+                if (isNonceAuth) {
+                    // NEW METHOD: QR code contains nonce auth URL
+                    handleNonceAuthQR(intent)
+                } else {
+                    // LEGACY METHOD: QR code contains credentials
+                    handleLegacyQR(intent)
                 }
             }
+        }
+    }
+
+    /**
+     * Handle new nonce-based QR code authentication
+     */
+    private fun handleNonceAuthQR(intent: Intent) {
+        val authUrl = intent.getStringExtra(QRScannerActivity.EXTRA_AUTH_URL)
+        val tenantSlug = intent.getStringExtra(QRScannerActivity.EXTRA_USERNAME)
+
+        if (authUrl != null && tenantSlug != null) {
+            // Navigate directly to MainActivity with the auth URL
+            // The WebView will open this URL directly without needing to generate a new nonce
+            val mainIntent = Intent(this, MainActivity::class.java).apply {
+                putExtra("AUTH_URL", authUrl)
+                putExtra("TENANT_SLUG", tenantSlug)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            }
+            startActivity(mainIntent)
+            finish()
+        } else {
+            Toast.makeText(this, "Invalid QR code data", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * Handle legacy QR code with credentials
+     */
+    private fun handleLegacyQR(intent: Intent) {
+        val username = intent.getStringExtra(QRScannerActivity.EXTRA_USERNAME)
+        val apiKey = intent.getStringExtra(QRScannerActivity.EXTRA_API_KEY)
+
+        if (username != null && apiKey != null) {
+            // Auto-fill the form fields
+            binding.username.setText(username)
+            binding.password.setText(apiKey)
+
+            // Auto-login with QR credentials
+            binding.loading.visibility = View.VISIBLE
+            loginViewModel.login(username, apiKey)
+
+            Toast.makeText(this, "QR Code scanned successfully!", Toast.LENGTH_SHORT).show()
         }
     }
     
