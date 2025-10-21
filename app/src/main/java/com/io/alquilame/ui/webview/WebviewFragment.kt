@@ -74,12 +74,21 @@ class WebviewFragment : Fragment() {
 
         // Check if auth URL was passed from QR code scan
         val authUrl = activity?.intent?.getStringExtra("AUTH_URL")
-        if (authUrl != null) {
-            // QR code authentication - load URL directly
+        val isQrNonceAuth = activity?.intent?.getBooleanExtra("IS_QR_NONCE_AUTH", false) ?: false
+
+        if (authUrl != null && isQrNonceAuth) {
+            // QR code nonce authentication - load URL directly
             loadAuthUrl(authUrl)
         } else {
-            // Normal authentication - fetch nonce
-            loadWebApp()
+            // Check if we have valid credentials for API-based authentication
+            val apiKey = credentialsStorage.getApiKey()
+            if (apiKey == "QR_NONCE_SESSION") {
+                // Placeholder API key from previous QR session - need to re-authenticate
+                showError("Session expired. Please scan QR code again or enter your API key.")
+            } else {
+                // Normal authentication - fetch nonce with API key
+                loadWebApp()
+            }
         }
     }
     
@@ -139,13 +148,29 @@ class WebviewFragment : Fragment() {
                 override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                     super.onPageStarted(view, url, favicon)
                     showLoading()
+                    android.util.Log.d("WebviewFragment", "Page started: $url")
                 }
-                
+
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
+                    android.util.Log.d("WebviewFragment", "Page finished: $url")
+
+                    // Check if page contains "Not Found" or error
+                    view?.evaluateJavascript("document.body.innerText") { result ->
+                        android.util.Log.d("WebviewFragment", "Page content preview: $result")
+                        if (result?.contains("Not Found", ignoreCase = true) == true ||
+                            result?.contains("404", ignoreCase = true) == true) {
+                            Toast.makeText(
+                                requireContext(),
+                                "URL returned 404. Check if backend endpoint exists: $url",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+
                     hideLoading()
                 }
-                
+
                 override fun onReceivedError(
                     view: WebView?,
                     request: WebResourceRequest?,
@@ -153,7 +178,14 @@ class WebviewFragment : Fragment() {
                 ) {
                     super.onReceivedError(view, request, error)
                     if (request?.isForMainFrame == true) {
-                        showError("Failed to load web app. Please check your connection.")
+                        val errorMsg = "Error: ${error?.description} (Code: ${error?.errorCode})"
+                        android.util.Log.e("WebviewFragment", "WebView error: $errorMsg, URL: ${request.url}")
+                        showError("Failed to load: ${request.url}\n$errorMsg")
+                        Toast.makeText(
+                            requireContext(),
+                            "Error loading ${request.url}: ${error?.description}",
+                            Toast.LENGTH_LONG
+                        ).show()
                     }
                 }
                 
@@ -213,12 +245,17 @@ class WebviewFragment : Fragment() {
         try {
             showLoading()
             webAppUrl = authUrl
-            webView.loadUrl(authUrl)
+
+            // Log the URL being loaded for debugging
+            android.util.Log.d("WebviewFragment", "Loading auth URL: $authUrl")
+
             Toast.makeText(
                 requireContext(),
-                "Loading from QR code authentication...",
-                Toast.LENGTH_SHORT
+                "Loading: $authUrl",
+                Toast.LENGTH_LONG
             ).show()
+
+            webView.loadUrl(authUrl)
         } catch (e: Exception) {
             showError("Error loading auth URL: ${e.message}")
         }

@@ -75,16 +75,16 @@ class LoginActivity : AppCompatActivity() {
 
         username.afterTextChanged {
             loginViewModel.loginDataChanged(
-                username.text.toString(),
-                apiKey.text.toString()
+                username.text.toString().trim(),
+                apiKey.text.toString().trim()
             )
         }
 
         apiKey.apply {
             afterTextChanged {
                 loginViewModel.loginDataChanged(
-                    username.text.toString(),
-                    apiKey.text.toString()
+                    username.text.toString().trim(),
+                    apiKey.text.toString().trim()
                 )
             }
 
@@ -92,8 +92,8 @@ class LoginActivity : AppCompatActivity() {
                 when (actionId) {
                     EditorInfo.IME_ACTION_DONE ->
                         loginViewModel.login(
-                            username.text.toString(),
-                            apiKey.text.toString()
+                            username.text.toString().trim(),
+                            apiKey.text.toString().trim()
                         )
                 }
                 false
@@ -101,7 +101,10 @@ class LoginActivity : AppCompatActivity() {
 
             login.setOnClickListener {
                 loading.visibility = View.VISIBLE
-                loginViewModel.login(username.text.toString(), apiKey.text.toString())
+                loginViewModel.login(
+                    username.text.toString().trim(),
+                    apiKey.text.toString().trim()
+                )
             }
         }
         
@@ -173,15 +176,24 @@ class LoginActivity : AppCompatActivity() {
      * Handle new nonce-based QR code authentication
      */
     private fun handleNonceAuthQR(intent: Intent) {
-        val authUrl = intent.getStringExtra(QRScannerActivity.EXTRA_AUTH_URL)
-        val tenantSlug = intent.getStringExtra(QRScannerActivity.EXTRA_USERNAME)
+        val authUrl = intent.getStringExtra(QRScannerActivity.EXTRA_AUTH_URL)?.trim()
+        val tenantSlug = intent.getStringExtra(QRScannerActivity.EXTRA_USERNAME)?.trim()
 
         if (authUrl != null && tenantSlug != null) {
+            // Save tenant slug temporarily for this session
+            // Note: API key is not available from QR nonce, so we create a temporary session
+            val credentialsStorage = com.io.alquilame.data.SecureCredentialsStorage(this)
+
+            // Save tenant slug with a placeholder API key
+            // User can set real API key later in settings for persistent login
+            credentialsStorage.saveCredentials(tenantSlug, "QR_NONCE_SESSION")
+
             // Navigate directly to MainActivity with the auth URL
             // The WebView will open this URL directly without needing to generate a new nonce
             val mainIntent = Intent(this, MainActivity::class.java).apply {
                 putExtra("AUTH_URL", authUrl)
                 putExtra("TENANT_SLUG", tenantSlug)
+                putExtra("IS_QR_NONCE_AUTH", true)
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
             }
             startActivity(mainIntent)
@@ -195,8 +207,8 @@ class LoginActivity : AppCompatActivity() {
      * Handle legacy QR code with credentials
      */
     private fun handleLegacyQR(intent: Intent) {
-        val username = intent.getStringExtra(QRScannerActivity.EXTRA_USERNAME)
-        val apiKey = intent.getStringExtra(QRScannerActivity.EXTRA_API_KEY)
+        val username = intent.getStringExtra(QRScannerActivity.EXTRA_USERNAME)?.trim()
+        val apiKey = intent.getStringExtra(QRScannerActivity.EXTRA_API_KEY)?.trim()
 
         if (username != null && apiKey != null) {
             // Auto-fill the form fields
@@ -214,7 +226,21 @@ class LoginActivity : AppCompatActivity() {
     private fun checkExistingLogin() {
         val credentialsStorage = com.io.alquilame.data.SecureCredentialsStorage(this)
         if (credentialsStorage.hasCredentials()) {
-            // User is already logged in, redirect to MainActivity
+            val apiKey = credentialsStorage.getApiKey()
+
+            // Check if it's a valid API key or just a QR session placeholder
+            if (apiKey == "QR_NONCE_SESSION") {
+                // QR session expired, stay on login screen
+                Toast.makeText(
+                    this,
+                    "Session expired. Please scan QR code or login with API key.",
+                    Toast.LENGTH_LONG
+                ).show()
+                credentialsStorage.clearCredentials()
+                return
+            }
+
+            // User is already logged in with valid API key, redirect to MainActivity
             val intent = Intent(this, MainActivity::class.java)
             intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
             startActivity(intent)

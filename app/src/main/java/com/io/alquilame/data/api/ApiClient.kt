@@ -12,6 +12,7 @@ class ApiClient(private val context: Context) {
 
     companion object {
         private const val BASE_DOMAIN = "alquilame.io"
+        private const val MAIN_BASE_URL = "https://alquilame.io/"
         private const val TIMEOUT_SECONDS = 30L
 
         /**
@@ -53,13 +54,25 @@ class ApiClient(private val context: Context) {
             .addConverterFactory(GsonConverterFactory.create())
             .build()
     }
-    
+
+    /**
+     * Get Retrofit instance for main domain (alquilame.io)
+     * Used for /api/mobile endpoints
+     */
+    private fun getRetrofitForMainDomain(): Retrofit {
+        return Retrofit.Builder()
+            .baseUrl(MAIN_BASE_URL)
+            .client(httpClient)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+    }
+
     val reservationsApiService: ReservationsApiService by lazy {
         getRetrofitForTenant().create(ReservationsApiService::class.java)
     }
 
     val authApiService: AuthApiService by lazy {
-        getRetrofitForTenant().create(AuthApiService::class.java)
+        getRetrofitForMainDomain().create(AuthApiService::class.java)
     }
 
     fun getAuthorizationHeader(): String? {

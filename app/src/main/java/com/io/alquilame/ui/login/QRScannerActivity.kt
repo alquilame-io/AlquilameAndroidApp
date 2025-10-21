@@ -58,18 +58,20 @@ class QRScannerActivity : AppCompatActivity() {
 
     private fun processQRResult(qrContent: String) {
         try {
+            val trimmedContent = qrContent.trim()
+
             // Check if it's a nonce-based authentication URL (NEW METHOD)
-            if (qrContent.startsWith("http://") || qrContent.startsWith("https://")) {
+            if (trimmedContent.startsWith("http://") || trimmedContent.startsWith("https://")) {
                 // New QR code format: Contains full authentication URL with nonce
                 // Example: https://negocio.alquilame.io/auth/nonce/negocio/Kx7pQmR9...
-                if (qrContent.contains("/auth/nonce/")) {
-                    processNonceAuthQR(qrContent)
+                if (trimmedContent.contains("/auth/nonce/")) {
+                    processNonceAuthQR(trimmedContent)
                 } else {
                     showError("Invalid authentication URL. Please scan a valid Alquilame QR code.")
                 }
             } else {
                 // Legacy QR code format: "tenant_slug|tenant_secret_slug|hash"
-                processLegacyQR(qrContent)
+                processLegacyQR(trimmedContent)
             }
         } catch (e: Exception) {
             showError("Error processing QR code: ${e.message}")
@@ -108,18 +110,36 @@ class QRScannerActivity : AppCompatActivity() {
 
     /**
      * Extract tenant slug from auth URL
-     * Example: https://negocio.alquilame.io/... -> "negocio"
+     * Supports multiple URL formats:
+     * - https://negocio.alquilame.io/auth/nonce/... -> "negocio"
+     * - https://alquilame.io/auth/nonce/negocio/... -> "negocio" (from path)
      */
     private fun extractTenantSlugFromUrl(url: String): String? {
         return try {
+            // Method 1: Try to extract from subdomain (e.g., negocio.alquilame.io)
             val domain = url.substringAfter("://").substringBefore("/")
-            // Extract subdomain (tenant slug)
             if (domain.contains(".alquilame.io")) {
-                domain.substringBefore(".alquilame.io")
-            } else {
-                null
+                val subdomain = domain.substringBefore(".alquilame.io")
+                // Make sure it's not "www" or empty
+                if (subdomain.isNotEmpty() && subdomain != "www") {
+                    return subdomain
+                }
             }
+
+            // Method 2: Try to extract from URL path (e.g., /auth/nonce/tenant_slug/...)
+            if (url.contains("/auth/nonce/")) {
+                val pathAfterNonce = url.substringAfter("/auth/nonce/")
+                val tenantFromPath = pathAfterNonce.substringBefore("/")
+                if (tenantFromPath.isNotEmpty()) {
+                    return tenantFromPath
+                }
+            }
+
+            // Could not extract tenant slug
+            Toast.makeText(this, "URL format: $url", Toast.LENGTH_LONG).show()
+            null
         } catch (e: Exception) {
+            Toast.makeText(this, "Error parsing URL: ${e.message}", Toast.LENGTH_LONG).show()
             null
         }
     }
