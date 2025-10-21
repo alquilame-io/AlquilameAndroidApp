@@ -21,6 +21,16 @@
     <string name="register_link">Visit https://alquilame.io</string>
     <string name="scan_qr_code">Scan QR Code</string>
     <string name="or_login_manually">or login manually</string>
+
+    <!-- Login page improvements -->
+    <string name="login_title">Welcome to Alquilame</string>
+    <string name="qr_login_title">Quick Login</string>
+    <string name="qr_login_description">Scan QR code from your admin panel for instant access (session expires when app closes)</string>
+    <string name="manual_login_title">Persistent Login</string>
+    <string name="manual_login_description">Enter your credentials to stay logged in</string>
+    <string name="tenant_slug_hint">Tenant Slug (e.g., eventos-prestige)</string>
+    <string name="api_key_hint">API Key</string>
+    <string name="divider_text">OR</string>
     <string name="settings_title">Settings</string>
     <string name="clear_login_data">Clear Login Data</string>
     <string name="clear_data_confirmation">Are you sure you want to clear all login data? You will need to login again.</string>

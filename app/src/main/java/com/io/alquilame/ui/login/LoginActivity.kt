@@ -34,12 +34,13 @@ class LoginActivity : AppCompatActivity() {
 
         binding = ActivityLoginBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        
+
         // Check if user is already logged in
         checkExistingLogin()
 
-        val username = binding.username
-        val apiKey = binding.password
+        // Get references to the TextInputEditText inside TextInputLayout
+        val username = binding.tilUsername.editText!!
+        val apiKey = binding.tilPassword.editText!!
         val login = binding.login
         val loading = binding.loading
 
@@ -212,8 +213,8 @@ class LoginActivity : AppCompatActivity() {
 
         if (username != null && apiKey != null) {
             // Auto-fill the form fields
-            binding.username.setText(username)
-            binding.password.setText(apiKey)
+            binding.tilUsername.editText?.setText(username)
+            binding.tilPassword.editText?.setText(apiKey)
 
             // Auto-login with QR credentials
             binding.loading.visibility = View.VISIBLE
