@@ -1,7 +1,19 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
 }
+
+// Optional override for local development, e.g. in local.properties:
+//   ALQUILAME_API_URL=http://localhost:4000/      (with `adb reverse tcp:4000 tcp:4000`)
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+val debugApiUrl: String = localProperties.getProperty("ALQUILAME_API_URL") ?: "https://alquilame.io/"
 
 android {
     namespace = "com.io.alquilame"
@@ -11,18 +23,19 @@ android {
         applicationId = "com.io.alquilame"
         minSdk = 24
         targetSdk = 36
-        versionCode = 5
-        versionName = "1.3"
+        versionCode = 7
+        versionName = "2.0"
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        
-        // Make environment variables available as BuildConfig fields
-        buildConfigField("String", "SECRET_STRING_LOGIN", "\"${System.getenv("SECRET_STRING_LOGIN") ?: project.findProperty("SECRET_STRING_LOGIN") ?: ""}\"")
+        buildConfigField("String", "API_BASE_URL", "\"https://alquilame.io/\"")
     }
 
     buildTypes {
+        debug {
+            buildConfigField("String", "API_BASE_URL", "\"$debugApiUrl\"")
+        }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -30,56 +43,49 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
-    }
-    kotlinOptions {
-        jvmTarget = "11"
+        isCoreLibraryDesugaringEnabled = true
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures {
-        viewBinding = true
+        compose = true
         buildConfig = true
+    }
+    androidResources {
+        localeFilters += listOf("en", "es")
     }
 }
 
+kotlin {
+    jvmToolchain(17)
+}
+
 dependencies {
+    coreLibraryDesugaring(libs.desugar)
 
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.appcompat)
-    implementation(libs.material)
-    implementation(libs.androidx.constraintlayout)
-    implementation(libs.androidx.lifecycle.livedata.ktx)
-    implementation(libs.androidx.lifecycle.viewmodel.ktx)
-    implementation(libs.androidx.navigation.fragment.ktx)
-    implementation(libs.androidx.navigation.ui.ktx)
-    implementation(libs.androidx.annotation)
-    
-    // Security - EncryptedSharedPreferences for secure credential storage
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
-    
-    // HTTP client for API calls
-    implementation("com.squareup.retrofit2:retrofit:2.9.0")
-    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
-    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
-    
-    // Coroutines for async operations
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-    
-    // Image loading
-    implementation("com.github.bumptech.glide:glide:4.16.0")
-    
-    // SwipeRefreshLayout
-    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
-    
-    // QR Code scanner
-    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
-    implementation("com.google.zxing:core:3.5.2")
-    
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.navigation.compose)
+    implementation(libs.androidx.security.crypto)
+
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.ui)
+    implementation(libs.compose.ui.tooling.preview)
+    implementation(libs.compose.material3)
+    implementation(libs.compose.material.icons)
+    debugImplementation(libs.compose.ui.tooling)
+
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.serialization)
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.logging)
+    implementation(libs.coil.compose)
+    implementation(libs.coil.okhttp)
+    implementation(libs.zxing.embedded)
+
     testImplementation(libs.junit)
-    testImplementation("org.robolectric:robolectric:4.10.3")
-    testImplementation("androidx.test:core:1.5.0")
-    testImplementation("androidx.test:rules:1.5.0")
-    testImplementation("androidx.test.ext:junit:1.1.5")
-    androidTestImplementation(libs.androidx.junit)
-    androidTestImplementation(libs.androidx.espresso.core)
 }
